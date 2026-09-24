@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import {
   ArrowRight, ArrowUpRight, BookOpenText, Check, ChevronDown, CircleHelp,
   FilePenLine, Infinity as InfinityIcon, LoaderCircle, LogOut, Plus,
-  Search, Sparkles, Trash2, X,
+  Search, Trash2, X,
 } from 'lucide-react'
 import {
   createUserWithEmailAndPassword, onAuthStateChanged, sendPasswordResetEmail,
@@ -77,24 +77,12 @@ function AuthScreen() {
 
   return (
     <div className="auth-page">
-      <header className="auth-header"><Brand /><span>Protótipo 01 / 2026</span></header>
+      <header className="auth-header"><Brand /></header>
       <main className="auth-layout">
-        <div className="auth-story">
-          <span className="eyebrow"><span className="eyebrow-dot" /> FEITO PARA APRENDER JUNTO</span>
-          <h1>Uma boa anotação <em>não acaba na última página.</em></h1>
-          <p>O que você aprendeu hoje pode ajudar alguém amanhã. Registre, encontre e compartilhe suas notas em um só caderno.</p>
-          <div className="sample-sheet" aria-hidden="true">
-            <span className="sample-tab">NA PÁGINA DE HOJE</span>
-            <span className="sample-subject">MATEMÁTICA · 2º D</span>
-            <strong>Função do 2º grau</strong>
-            <span>O gráfico de ax² + bx + c forma uma parábola. O sinal de a indica a concavidade...</span>
-            <div className="sample-footer"><span>por alguém da turma</span><Sparkles size={17} /></div>
-          </div>
-        </div>
         <section className="auth-card" aria-labelledby="auth-title">
           <span className="auth-card-icon"><BookOpenText size={24} /></span>
-          <h2 id="auth-title">{mode === 'login' ? 'Abra seu caderno' : 'Comece a escrever'}</h2>
-          <p>{mode === 'login' ? 'Entre para ler e publicar anotações da comunidade.' : 'Crie uma conta para contribuir com o caderno.'}</p>
+          <h2 id="auth-title">{mode === 'login' ? 'Entrar no caderno' : 'Criar conta'}</h2>
+          <p>{mode === 'login' ? 'Acesse suas anotações compartilhadas.' : 'Use seu e-mail para começar a compartilhar anotações.'}</p>
           <form onSubmit={submit}>
             <label htmlFor="email">E-mail</label>
             <input id="email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" required autoFocus />
@@ -285,7 +273,7 @@ function App() {
           <div className="sidebar-bottom"><div className="sidebar-stat"><strong>{myNotes.toString().padStart(2, '0')}</strong><span>anotações<br />escritas por você</span></div><p>Uma página pode abrir muitas ideias.</p><div className="other-apps"><span>OUTROS ESPAÇOS</span><a href="https://tech-2d.github.io/Agenda/" target="_blank" rel="noopener noreferrer">Agenda <ArrowUpRight size={15} /></a><a href="https://tech-2d.github.io/professores/" target="_blank" rel="noopener noreferrer">Cadê o professor? <ArrowUpRight size={15} /></a></div></div>
         </aside>
         <main className="main-content">
-          <div className="page-intro"><span className="eyebrow"><span className="eyebrow-dot" /> O CONHECIMENTO CONTINUA AQUI</span><h1>O caderno de <em>todo mundo.</em></h1><p>Uma ideia leva a outra. Encontre uma explicação ou deixe a sua para quem vier depois.</p></div>
+          <div className="page-intro"><h1>Anotações</h1><p>Encontre ou compartilhe uma anotação.</p></div>
           <div className="toolbar"><label className="search-box"><Search size={19} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar assunto, palavra ou turma" aria-label="Buscar anotações" />{search && <button type="button" onClick={() => setSearch('')} aria-label="Limpar busca"><X size={17} /></button>}</label><button className="primary-button add-button" onClick={() => openEditor()}><Plus size={19} /> Nova anotação</button></div>
           <div className="mobile-subjects" aria-label="Matérias">{(['Todas', ...SUBJECTS] as SubjectFilter[]).map((item) => <button key={item} type="button" className={subject === item ? 'selected' : ''} onClick={() => setSubject(item)}>{item}</button>)}</div>
           <div className="list-heading"><div><BookOpenText size={20} /><h2>{subject === 'Todas' ? 'Todas as páginas' : subject}</h2></div><span>{visibleNotes.length} {visibleNotes.length === 1 ? 'anotação' : 'anotações'}</span></div>
