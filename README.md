@@ -4,6 +4,8 @@ Protótipo inicial de um caderno coletivo da Tech-2D. Qualquer pessoa pode ler a
 
 O botão de marcador em cada página permite adicioná-la aos favoritos. O filtro “Favoritos” mostra só as páginas marcadas; a lista fica salva neste navegador, sem exigir login, e não é sincronizada entre dispositivos.
 
+Após uma nova publicação, o site mostra um aviso com os títulos dos commits que a pessoa ainda não viu. O aviso aparece uma vez por versão em cada navegador (via `localStorage`); em uma primeira visita, mostra apenas a mudança mais recente. Por isso, escreva títulos de commit claros para o público, como `feat: permitir favoritar anotações`. O build incorpora até 30 commits recentes sem merge; se a última versão vista for mais antiga que esse histórico, o aviso resume as cinco mudanças mais recentes.
+
 ## Rodar localmente
 
 ```sh

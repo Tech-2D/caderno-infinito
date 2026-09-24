@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import {
   ArrowRight, ArrowUpRight, BookOpenText, Check, ChevronDown, CircleHelp,
   Bookmark, FilePenLine, Infinity as InfinityIcon, LoaderCircle, LogOut, Plus,
-  Search, Trash2, X,
+  Search, Sparkles, Trash2, X,
 } from 'lucide-react'
 import {
   createUserWithEmailAndPassword, onAuthStateChanged, sendPasswordResetEmail,
@@ -14,6 +14,7 @@ import { auth, db } from './firebase'
 import { FAVORITES_STORAGE_KEY, filterFavoriteNotes, parseFavoriteIds, toggleFavoriteId } from './favorites'
 import { MarkdownContent, MarkdownExcerpt } from './MarkdownContent'
 import { filterNotes, matchesSubjectName, noteDate, SUBJECTS, type Note, type Subject, type SubjectFilter } from './notes'
+import { releaseTitle, SEEN_RELEASE_KEY, unseenReleases, type ReleaseEntry } from './releaseNotes'
 
 type NoteDraft = Pick<Note, 'title' | 'content' | 'subject' | 'className'>
 
@@ -105,6 +106,28 @@ function AuthDialog({ onClose }: { onClose: () => void }) {
           </div>
           <div className="auth-foot"><CircleHelp size={16} /><span>A leitura é livre. Para publicar, entre com sua conta; só o autor pode editar.</span></div>
         </section>
+    </div>
+  )
+}
+
+function ReleaseDialog({ releases, onClose }: { releases: ReleaseEntry[]; onClose: () => void }) {
+  useEffect(() => {
+    const close = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose() }
+    window.addEventListener('keydown', close)
+    return () => window.removeEventListener('keydown', close)
+  }, [onClose])
+
+  return (
+    <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+      <section className="release-dialog" role="dialog" aria-modal="true" aria-labelledby="release-title">
+        <div className="modal-top"><span className="eyebrow">NOVIDADES DO CADERNO</span><button type="button" className="icon-button" onClick={onClose} aria-label="Fechar novidades"><X size={20} /></button></div>
+        <span className="release-icon"><Sparkles size={25} /></span>
+        <h2 id="release-title">O que mudou por aqui</h2>
+        <p>{releases.length === 1 ? 'Tem uma novidade para você conhecer.' : 'Veja o que mudou desde sua última visita.'}</p>
+        <ul className="release-list">{releases.slice(0, 6).map((entry) => <li key={entry.sha}>{releaseTitle(entry.subject)}</li>)}</ul>
+        {releases.length > 6 && <p className="release-more">E mais {releases.length - 6} alterações.</p>}
+        <button type="button" className="primary-button release-done" onClick={onClose} autoFocus>Entendi, vamos lá <ArrowRight size={17} /></button>
+      </section>
     </div>
   )
 }
@@ -218,6 +241,14 @@ function readFavoriteIds(): string[] {
   }
 }
 
+function readUnseenReleases(): ReleaseEntry[] {
+  try {
+    return unseenReleases(__APP_RELEASE_HISTORY__, window.localStorage.getItem(SEEN_RELEASE_KEY))
+  } catch {
+    return unseenReleases(__APP_RELEASE_HISTORY__, null)
+  }
+}
+
 function App() {
   const [user, setUser] = useState<User | null>(null)
   const [authReady, setAuthReady] = useState(false)
@@ -234,6 +265,7 @@ function App() {
   const [editorOpen, setEditorOpen] = useState(false)
   const [editorNote, setEditorNote] = useState<Note | null>(null)
   const [authOpen, setAuthOpen] = useState(false)
+  const [releasesToShow, setReleasesToShow] = useState(readUnseenReleases)
   const pendingNewNote = useRef(false)
 
   useEffect(() => onAuthStateChanged(auth, (account) => {
@@ -292,6 +324,15 @@ function App() {
 
   function toggleFavorite(noteId: string) {
     setFavoriteIds((current) => toggleFavoriteId(current, noteId))
+  }
+
+  function closeReleaseDialog() {
+    try {
+      window.localStorage.setItem(SEEN_RELEASE_KEY, __APP_RELEASE_HISTORY__[0].sha)
+    } catch {
+      // Se o navegador bloquear o armazenamento, o aviso fecha nesta sessão.
+    }
+    setReleasesToShow([])
   }
 
   function handleEmptyAction() {
@@ -381,6 +422,7 @@ function App() {
       {selectedNote && <NoteDetail note={selectedNote} canEdit={selectedNote.authorUid === user?.uid} isFavorite={favoriteIds.includes(selectedNote.id)} onToggleFavorite={() => toggleFavorite(selectedNote.id)} onClose={() => setSelectedNote(null)} onEdit={() => openEditor(selectedNote)} onDelete={() => removeNote(selectedNote)} />}
       {editorOpen && user && <NoteEditor note={editorNote} onClose={() => setEditorOpen(false)} onSave={saveNote} />}
       {authOpen && !user && <AuthDialog onClose={() => { pendingNewNote.current = false; setAuthOpen(false) }} />}
+      {releasesToShow.length > 0 && <ReleaseDialog releases={releasesToShow} onClose={closeReleaseDialog} />}
     </div>
   )
 }
