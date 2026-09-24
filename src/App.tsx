@@ -1,0 +1,304 @@
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import {
+  ArrowRight, ArrowUpRight, BookOpenText, Check, ChevronDown, CircleHelp,
+  FilePenLine, Infinity as InfinityIcon, LoaderCircle, LogOut, Plus,
+  Search, Sparkles, Trash2, X,
+} from 'lucide-react'
+import {
+  createUserWithEmailAndPassword, onAuthStateChanged, sendPasswordResetEmail,
+  signInWithEmailAndPassword, signOut, type User,
+} from 'firebase/auth'
+import { FirebaseError } from 'firebase/app'
+import { addDoc, collection, deleteDoc, doc, onSnapshot, serverTimestamp, updateDoc } from 'firebase/firestore'
+import { auth, db } from './firebase'
+import { filterNotes, noteDate, SUBJECTS, type Note, type Subject, type SubjectFilter } from './notes'
+
+type NoteDraft = Pick<Note, 'title' | 'content' | 'subject' | 'className'>
+
+function authMessage(error: unknown): string {
+  if (!(error instanceof FirebaseError)) return 'Não foi possível concluir agora. Tente novamente.'
+  if (error.code === 'auth/email-already-in-use') return 'Esse e-mail já tem conta. Entre com sua senha.'
+  if (error.code === 'auth/weak-password') return 'Crie uma senha com pelo menos 6 caracteres.'
+  if (error.code === 'auth/invalid-email') return 'Confira o endereço de e-mail.'
+  if (error.code === 'auth/network-request-failed') return 'Sem conexão com o Firebase. Tente novamente.'
+  if (error.code === 'auth/too-many-requests') return 'Muitas tentativas seguidas. Aguarde um pouco e tente novamente.'
+  return 'E-mail ou senha não conferem. Tente de novo.'
+}
+
+function Brand() {
+  return (
+    <div className="brand" aria-label="Caderno Infinito">
+      <span className="brand-symbol"><InfinityIcon size={25} strokeWidth={2.5} /></span>
+      <span>Caderno <strong>Infinito</strong><small>um espaço da Tech-2D</small></span>
+    </div>
+  )
+}
+
+function AuthScreen() {
+  const [mode, setMode] = useState<'login' | 'register'>('login')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
+
+  async function submit(event: FormEvent) {
+    event.preventDefault()
+    setBusy(true)
+    setError('')
+    setNotice('')
+    try {
+      if (mode === 'register') await createUserWithEmailAndPassword(auth, email.trim(), password)
+      else await signInWithEmailAndPassword(auth, email.trim(), password)
+      setPassword('')
+    } catch (cause) {
+      setError(authMessage(cause))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function recoverPassword() {
+    if (!email.trim()) {
+      setError('Digite seu e-mail para receber o link de recuperação.')
+      return
+    }
+    setBusy(true)
+    setError('')
+    try {
+      await sendPasswordResetEmail(auth, email.trim())
+      setNotice('Se esse e-mail tiver uma conta, enviaremos um link para redefinir a senha.')
+    } catch {
+      setError('Não conseguimos enviar o link agora. Tente novamente.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="auth-page">
+      <header className="auth-header"><Brand /><span>Protótipo 01 / 2026</span></header>
+      <main className="auth-layout">
+        <div className="auth-story">
+          <span className="eyebrow"><span className="eyebrow-dot" /> FEITO PARA APRENDER JUNTO</span>
+          <h1>Uma boa anotação <em>não acaba na última página.</em></h1>
+          <p>O que você aprendeu hoje pode ajudar alguém amanhã. Registre, encontre e compartilhe suas notas em um só caderno.</p>
+          <div className="sample-sheet" aria-hidden="true">
+            <span className="sample-tab">NA PÁGINA DE HOJE</span>
+            <span className="sample-subject">MATEMÁTICA · 2º D</span>
+            <strong>Função do 2º grau</strong>
+            <span>O gráfico de ax² + bx + c forma uma parábola. O sinal de a indica a concavidade...</span>
+            <div className="sample-footer"><span>por alguém da turma</span><Sparkles size={17} /></div>
+          </div>
+        </div>
+        <section className="auth-card" aria-labelledby="auth-title">
+          <span className="auth-card-icon"><BookOpenText size={24} /></span>
+          <h2 id="auth-title">{mode === 'login' ? 'Abra seu caderno' : 'Comece a escrever'}</h2>
+          <p>{mode === 'login' ? 'Entre para ler e publicar anotações da comunidade.' : 'Crie uma conta para contribuir com o caderno.'}</p>
+          <form onSubmit={submit}>
+            <label htmlFor="email">E-mail</label>
+            <input id="email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" required autoFocus />
+            <label htmlFor="password">Senha</label>
+            <input id="password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} minLength={mode === 'register' ? 6 : undefined} required />
+            {error && <p className="form-error" role="alert">{error}</p>}
+            {notice && <p className="form-notice" role="status">{notice}</p>}
+            <button className="primary-button auth-submit" disabled={busy}>{busy ? <LoaderCircle className="spin" size={18} /> : mode === 'login' ? <>Entrar no caderno <ArrowRight size={18} /></> : <>Criar conta <ArrowRight size={18} /></>}</button>
+          </form>
+          <div className="auth-card-links">
+            <button type="button" onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setError(''); setNotice('') }}>{mode === 'login' ? 'Ainda não tenho conta' : 'Já tenho conta'}</button>
+            {mode === 'login' && <button type="button" onClick={recoverPassword} disabled={busy}>Esqueci a senha</button>}
+          </div>
+          <div className="auth-foot"><CircleHelp size={16} /><span>Todos com conta podem ler e publicar. Cada pessoa edita apenas as próprias notas.</span></div>
+        </section>
+      </main>
+    </div>
+  )
+}
+
+function NoteCard({ note, onOpen }: { note: Note; onOpen: () => void }) {
+  return (
+    <button type="button" className="note-card" onClick={onOpen} aria-label={`Ler anotação: ${note.title}`}>
+      <span className="note-card-top"><span className="subject-pill">{note.subject}</span><ArrowUpRight size={18} /></span>
+      <strong>{note.title}</strong>
+      <span className="note-excerpt">{note.content}</span>
+      <span className="note-card-bottom"><span>{note.className || 'Sem turma'} · {note.authorEmail}</span><time>{noteDate(note.updatedAt)}</time></span>
+    </button>
+  )
+}
+
+function NoteDetail({ note, canEdit, onClose, onEdit, onDelete }: {
+  note: Note; canEdit: boolean; onClose: () => void; onEdit: () => void; onDelete: () => void
+}) {
+  useEffect(() => {
+    const close = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose() }
+    window.addEventListener('keydown', close)
+    return () => window.removeEventListener('keydown', close)
+  }, [onClose])
+
+  return (
+    <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+      <article className="detail-sheet" role="dialog" aria-modal="true" aria-labelledby="detail-title">
+        <div className="modal-top"><span className="eyebrow">PÁGINA DO CADERNO</span><button className="icon-button" onClick={onClose} aria-label="Fechar"><X size={20} /></button></div>
+        <span className="subject-pill">{note.subject}</span>
+        <h2 id="detail-title">{note.title}</h2>
+        <div className="detail-meta">{note.className || 'Sem turma'} <span>·</span> {note.authorEmail} <span>·</span> {noteDate(note.updatedAt)}</div>
+        <div className="detail-content">{note.content}</div>
+        <div className="detail-actions">
+          {canEdit && <><button type="button" className="secondary-button" onClick={onEdit}><FilePenLine size={17} /> Editar</button><button type="button" className="danger-button" onClick={onDelete}><Trash2 size={17} /> Apagar</button></>}
+          <button type="button" className="text-button" onClick={onClose}>Voltar ao caderno</button>
+        </div>
+      </article>
+    </div>
+  )
+}
+
+function NoteEditor({ note, onClose, onSave }: { note: Note | null; onClose: () => void; onSave: (draft: NoteDraft) => Promise<void> }) {
+  const [title, setTitle] = useState(note?.title ?? '')
+  const [content, setContent] = useState(note?.content ?? '')
+  const [subject, setSubject] = useState<Subject>(note?.subject ?? 'Matemática')
+  const [className, setClassName] = useState(note?.className ?? '')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    const close = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose() }
+    window.addEventListener('keydown', close)
+    return () => window.removeEventListener('keydown', close)
+  }, [onClose])
+
+  async function submit(event: FormEvent) {
+    event.preventDefault()
+    if (!title.trim() || !content.trim()) {
+      setError('Preencha o título e a anotação.')
+      return
+    }
+    setBusy(true)
+    setError('')
+    try {
+      await onSave({ title: title.trim(), content: content.trim(), subject, className: className.trim() })
+      onClose()
+    } catch {
+      setError('Não foi possível salvar a anotação. Confira a conexão e tente novamente.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+      <section className="editor-sheet" role="dialog" aria-modal="true" aria-labelledby="editor-title">
+        <div className="modal-top"><span className="eyebrow">{note ? 'EDITAR PÁGINA' : 'NOVA PÁGINA'}</span><button className="icon-button" onClick={onClose} aria-label="Fechar"><X size={20} /></button></div>
+        <h2 id="editor-title">{note ? 'Ajuste sua anotação' : 'O que você descobriu?'}</h2>
+        <p>Uma explicação clara ajuda a próxima pessoa a entender de primeira.</p>
+        <form onSubmit={submit}>
+          <div className="editor-row">
+            <label>Matéria<select value={subject} onChange={(event) => setSubject(event.target.value as Subject)}>{SUBJECTS.map((item) => <option key={item}>{item}</option>)}</select><ChevronDown size={16} aria-hidden="true" /></label>
+            <label>Turma <span>(opcional)</span><input value={className} onChange={(event) => setClassName(event.target.value)} placeholder="Ex.: 2º D" maxLength={32} /></label>
+          </div>
+          <label>Título<input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Ex.: Função do 2º grau" maxLength={120} required autoFocus /></label>
+          <label>Anotação<textarea value={content} onChange={(event) => setContent(event.target.value)} placeholder="Explique o assunto do seu jeito, com exemplos, dicas e dúvidas..." maxLength={5000} rows={10} required /></label>
+          <span className="editor-count">{content.length} / 5000 caracteres</span>
+          {error && <p className="form-error" role="alert">{error}</p>}
+          <div className="editor-actions"><button type="button" className="text-button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={busy}>{busy ? <LoaderCircle className="spin" size={18} /> : <><Check size={18} /> {note ? 'Salvar alterações' : 'Publicar anotação'}</>}</button></div>
+        </form>
+      </section>
+    </div>
+  )
+}
+
+function App() {
+  const [user, setUser] = useState<User | null>(null)
+  const [authReady, setAuthReady] = useState(false)
+  const [notes, setNotes] = useState<Note[]>([])
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
+  const [actionError, setActionError] = useState('')
+  const [subject, setSubject] = useState<SubjectFilter>('Todas')
+  const [search, setSearch] = useState('')
+  const [selectedNote, setSelectedNote] = useState<Note | null>(null)
+  const [editorOpen, setEditorOpen] = useState(false)
+  const [editorNote, setEditorNote] = useState<Note | null>(null)
+
+  useEffect(() => onAuthStateChanged(auth, (account) => { setUser(account); setAuthReady(true) }), [])
+
+  useEffect(() => {
+    if (!user) return
+    return onSnapshot(collection(db, 'notebookNotes'), (snapshot) => {
+      setNotes(snapshot.docs.map((item) => ({ id: item.id, ...item.data() }) as Note))
+      setLoading(false)
+      setLoadError('')
+    }, () => {
+      setLoading(false)
+      setLoadError('Não foi possível carregar as anotações. Confira a conexão ou tente entrar novamente.')
+    })
+  }, [user])
+
+  const visibleNotes = useMemo(() => filterNotes(notes, subject, search), [notes, subject, search])
+  const myNotes = notes.filter((note) => note.authorUid === user?.uid).length
+
+  function openEditor(note: Note | null = null) {
+    setEditorNote(note)
+    setSelectedNote(null)
+    setEditorOpen(true)
+  }
+
+  async function saveNote(draft: NoteDraft) {
+    const account = auth.currentUser
+    if (!account?.email) throw new Error('Sessão expirada')
+    if (editorNote) {
+      await updateDoc(doc(db, 'notebookNotes', editorNote.id), { ...draft, updatedAt: serverTimestamp() })
+    } else {
+      await addDoc(collection(db, 'notebookNotes'), {
+        ...draft, authorUid: account.uid, authorEmail: account.email,
+        createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
+      })
+    }
+  }
+
+  async function removeNote(note: Note) {
+    if (!window.confirm(`Apagar “${note.title}” do caderno? Essa ação não pode ser desfeita.`)) return
+    setActionError('')
+    try {
+      await deleteDoc(doc(db, 'notebookNotes', note.id))
+      setSelectedNote(null)
+    } catch {
+      setActionError('Não foi possível apagar a anotação. Tente novamente.')
+    }
+  }
+
+  if (!authReady) return <div className="boot-screen"><LoaderCircle className="spin" size={25} /><span>Abrindo o caderno…</span></div>
+  if (!user) return <AuthScreen />
+
+  return (
+    <div className="app-shell">
+      <header className="topbar"><Brand /><div className="topbar-actions"><span className="account-email" title={user.email ?? ''}>{user.email}</span><button type="button" className="signout-button" onClick={() => signOut(auth)} aria-label="Sair da conta" title="Sair"><LogOut size={18} /></button></div></header>
+      <div className="workspace">
+        <aside className="sidebar">
+          <div className="sidebar-heading"><span>SEU ESPAÇO</span><strong>Explore o caderno</strong></div>
+          <nav aria-label="Filtrar por matéria" className="subject-list">
+            {(['Todas', ...SUBJECTS] as SubjectFilter[]).map((item) => (
+              <button key={item} type="button" className={subject === item ? 'selected' : ''} onClick={() => setSubject(item)} aria-current={subject === item ? 'page' : undefined}>
+                <span className="subject-dot" /><span>{item === 'Todas' ? 'Todas as notas' : item}</span><small>{item === 'Todas' ? notes.length : notes.filter((note) => note.subject === item).length}</small>
+              </button>
+            ))}
+          </nav>
+          <div className="sidebar-bottom"><div className="sidebar-stat"><strong>{myNotes.toString().padStart(2, '0')}</strong><span>anotações<br />escritas por você</span></div><p>Uma página pode abrir muitas ideias.</p><div className="other-apps"><span>OUTROS ESPAÇOS</span><a href="https://tech-2d.github.io/Agenda/" target="_blank" rel="noopener noreferrer">Agenda <ArrowUpRight size={15} /></a><a href="https://tech-2d.github.io/professores/" target="_blank" rel="noopener noreferrer">Cadê o professor? <ArrowUpRight size={15} /></a></div></div>
+        </aside>
+        <main className="main-content">
+          <div className="page-intro"><span className="eyebrow"><span className="eyebrow-dot" /> O CONHECIMENTO CONTINUA AQUI</span><h1>O caderno de <em>todo mundo.</em></h1><p>Uma ideia leva a outra. Encontre uma explicação ou deixe a sua para quem vier depois.</p></div>
+          <div className="toolbar"><label className="search-box"><Search size={19} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar assunto, palavra ou turma" aria-label="Buscar anotações" />{search && <button type="button" onClick={() => setSearch('')} aria-label="Limpar busca"><X size={17} /></button>}</label><button className="primary-button add-button" onClick={() => openEditor()}><Plus size={19} /> Nova anotação</button></div>
+          <div className="mobile-subjects" aria-label="Matérias">{(['Todas', ...SUBJECTS] as SubjectFilter[]).map((item) => <button key={item} type="button" className={subject === item ? 'selected' : ''} onClick={() => setSubject(item)}>{item}</button>)}</div>
+          <div className="list-heading"><div><BookOpenText size={20} /><h2>{subject === 'Todas' ? 'Todas as páginas' : subject}</h2></div><span>{visibleNotes.length} {visibleNotes.length === 1 ? 'anotação' : 'anotações'}</span></div>
+          {actionError && <div className="notice error" role="alert">{actionError}<button onClick={() => setActionError('')} aria-label="Fechar aviso"><X size={16} /></button></div>}
+          {loadError && <div className="notice error" role="alert">{loadError}</div>}
+          {loading ? <div className="empty-state"><LoaderCircle className="spin" size={26} /><p>Procurando anotações…</p></div> : visibleNotes.length === 0 ? <div className="empty-state"><span className="empty-icon"><FilePenLine size={30} /></span><h3>{notes.length === 0 ? 'A primeira página espera por você.' : 'Nenhuma anotação por aqui.'}</h3><p>{notes.length === 0 ? 'Publique uma ideia, um resumo ou uma explicação para começar o caderno.' : 'Tente outra palavra ou matéria para encontrar mais páginas.'}</p><button className="secondary-button" onClick={() => notes.length === 0 ? openEditor() : (setSearch(''), setSubject('Todas'))}>{notes.length === 0 ? 'Escrever a primeira anotação' : 'Limpar filtros'}</button></div> : <div className="notes-grid">{visibleNotes.map((note) => <NoteCard key={note.id} note={note} onOpen={() => setSelectedNote(note)} />)}</div>}
+          <footer><span>Caderno Infinito · protótipo da Tech-2D</span><span>Feito para compartilhar o que aprendemos.</span></footer>
+        </main>
+      </div>
+      {selectedNote && <NoteDetail note={selectedNote} canEdit={selectedNote.authorUid === user.uid} onClose={() => setSelectedNote(null)} onEdit={() => openEditor(selectedNote)} onDelete={() => removeNote(selectedNote)} />}
+      {editorOpen && <NoteEditor note={editorNote} onClose={() => setEditorOpen(false)} onSave={saveNote} />}
+    </div>
+  )
+}
+
+export default App
