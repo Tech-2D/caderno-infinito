@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import {
   ArrowRight, ArrowUpRight, BookOpenText, Check, ChevronDown, CircleHelp,
-  FilePenLine, Infinity as InfinityIcon, LoaderCircle, LogOut, Plus,
+  Bookmark, FilePenLine, Infinity as InfinityIcon, LoaderCircle, LogOut, Plus,
   Search, Trash2, X,
 } from 'lucide-react'
 import {
@@ -11,6 +11,7 @@ import {
 import { FirebaseError } from 'firebase/app'
 import { addDoc, collection, deleteDoc, doc, onSnapshot, serverTimestamp, updateDoc } from 'firebase/firestore'
 import { auth, db } from './firebase'
+import { FAVORITES_STORAGE_KEY, filterFavoriteNotes, parseFavoriteIds, toggleFavoriteId } from './favorites'
 import { MarkdownContent, MarkdownExcerpt } from './MarkdownContent'
 import { filterNotes, matchesSubjectName, noteDate, SUBJECTS, type Note, type Subject, type SubjectFilter } from './notes'
 
@@ -108,19 +109,22 @@ function AuthDialog({ onClose }: { onClose: () => void }) {
   )
 }
 
-function NoteCard({ note, onOpen }: { note: Note; onOpen: () => void }) {
+function NoteCard({ note, onOpen, isFavorite, onToggleFavorite }: { note: Note; onOpen: () => void; isFavorite: boolean; onToggleFavorite: () => void }) {
   return (
-    <button type="button" className="note-card" onClick={onOpen} aria-label={`Ler anotação: ${note.title}`}>
-      <span className="note-card-top"><span className="subject-pill">{note.subject}</span><ArrowUpRight size={18} /></span>
-      <strong>{note.title}</strong>
-      <MarkdownExcerpt content={note.content} />
-      <span className="note-card-bottom"><span>{note.className || 'Sem turma'} · {note.authorEmail}</span><time>{noteDate(note.updatedAt)}</time></span>
-    </button>
+    <article className="note-card">
+      <button type="button" className="note-card-content" onClick={onOpen} aria-label={`Ler anotação: ${note.title}`}>
+        <span className="note-card-top"><span className="subject-pill">{note.subject}</span><ArrowUpRight size={18} /></span>
+        <strong>{note.title}</strong>
+        <MarkdownExcerpt content={note.content} />
+        <span className="note-card-bottom"><span>{note.className || 'Sem turma'} · {note.authorEmail}</span><time>{noteDate(note.updatedAt)}</time></span>
+      </button>
+      <button type="button" className="favorite-button" onClick={onToggleFavorite} aria-label={`${isFavorite ? 'Remover dos favoritos' : 'Adicionar aos favoritos'}: ${note.title}`} aria-pressed={isFavorite} title={isFavorite ? 'Remover dos favoritos' : 'Adicionar aos favoritos'}><Bookmark size={19} fill={isFavorite ? 'currentColor' : 'none'} /></button>
+    </article>
   )
 }
 
-function NoteDetail({ note, canEdit, onClose, onEdit, onDelete }: {
-  note: Note; canEdit: boolean; onClose: () => void; onEdit: () => void; onDelete: () => void
+function NoteDetail({ note, canEdit, isFavorite, onToggleFavorite, onClose, onEdit, onDelete }: {
+  note: Note; canEdit: boolean; isFavorite: boolean; onToggleFavorite: () => void; onClose: () => void; onEdit: () => void; onDelete: () => void
 }) {
   useEffect(() => {
     const close = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose() }
@@ -137,6 +141,7 @@ function NoteDetail({ note, canEdit, onClose, onEdit, onDelete }: {
         <div className="detail-meta">{note.className || 'Sem turma'} <span>·</span> {note.authorEmail} <span>·</span> {noteDate(note.updatedAt)}</div>
         <div className="detail-content"><MarkdownContent content={note.content} /></div>
         <div className="detail-actions">
+          <button type="button" className="secondary-button detail-favorite" onClick={onToggleFavorite} aria-pressed={isFavorite}><Bookmark size={17} fill={isFavorite ? 'currentColor' : 'none'} /> {isFavorite ? 'Salvo nos favoritos' : 'Adicionar aos favoritos'}</button>
           {canEdit && <><button type="button" className="secondary-button" onClick={onEdit}><FilePenLine size={17} /> Editar</button><button type="button" className="danger-button" onClick={onDelete}><Trash2 size={17} /> Apagar</button></>}
           <button type="button" className="text-button" onClick={onClose}>Voltar ao caderno</button>
         </div>
@@ -205,6 +210,14 @@ function NoteEditor({ note, onClose, onSave }: { note: Note | null; onClose: () 
   )
 }
 
+function readFavoriteIds(): string[] {
+  try {
+    return parseFavoriteIds(window.localStorage.getItem(FAVORITES_STORAGE_KEY))
+  } catch {
+    return []
+  }
+}
+
 function App() {
   const [user, setUser] = useState<User | null>(null)
   const [authReady, setAuthReady] = useState(false)
@@ -215,6 +228,8 @@ function App() {
   const [subject, setSubject] = useState<SubjectFilter>('Todas')
   const [subjectQuery, setSubjectQuery] = useState('')
   const [search, setSearch] = useState('')
+  const [favoriteIds, setFavoriteIds] = useState(readFavoriteIds)
+  const [favoritesOnly, setFavoritesOnly] = useState(false)
   const [selectedNote, setSelectedNote] = useState<Note | null>(null)
   const [editorOpen, setEditorOpen] = useState(false)
   const [editorNote, setEditorNote] = useState<Note | null>(null)
@@ -245,7 +260,27 @@ function App() {
     })
   }, [])
 
-  const visibleNotes = useMemo(() => filterNotes(notes, subject, search), [notes, subject, search])
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(FAVORITES_STORAGE_KEY, JSON.stringify(favoriteIds))
+    } catch {
+      // Os favoritos continuam disponíveis nesta sessão se o navegador bloquear o armazenamento.
+    }
+  }, [favoriteIds])
+
+  useEffect(() => {
+    const syncFavorites = (event: StorageEvent) => {
+      if (event.key === FAVORITES_STORAGE_KEY) setFavoriteIds(parseFavoriteIds(event.newValue))
+    }
+    window.addEventListener('storage', syncFavorites)
+    return () => window.removeEventListener('storage', syncFavorites)
+  }, [])
+
+  const visibleNotes = useMemo(() => {
+    const filtered = filterNotes(notes, subject, search)
+    return favoritesOnly ? filterFavoriteNotes(filtered, favoriteIds) : filtered
+  }, [notes, subject, search, favoritesOnly, favoriteIds])
+  const favoriteCount = useMemo(() => filterFavoriteNotes(notes, favoriteIds).length, [notes, favoriteIds])
   const availableSubjects = useMemo(() => [...new Set<string>([...SUBJECTS, ...notes.map((note) => note.subject)])], [notes])
   const matchingSubjects = useMemo(() => availableSubjects.filter((item) => matchesSubjectName(item, subjectQuery)), [availableSubjects, subjectQuery])
   const subjectCounts = useMemo(() => {
@@ -254,6 +289,17 @@ function App() {
     return counts
   }, [notes])
   const myNotes = notes.filter((note) => note.authorUid === user?.uid).length
+
+  function toggleFavorite(noteId: string) {
+    setFavoriteIds((current) => toggleFavoriteId(current, noteId))
+  }
+
+  function handleEmptyAction() {
+    if (favoritesOnly && favoriteCount === 0) setFavoritesOnly(false)
+    else if (notes.length === 0 && !favoritesOnly) openEditor()
+    setSearch('')
+    setSubject('Todas')
+  }
 
   function openEditor(note: Note | null = null) {
     if (!user) {
@@ -314,14 +360,25 @@ function App() {
           <div className="page-intro"><h1>Anotações</h1><p>{user ? 'Encontre ou compartilhe uma anotação.' : 'Leia livremente. Entre para compartilhar as suas anotações.'}</p></div>
           <div className="toolbar"><label className="search-box"><Search size={19} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar assunto, palavra ou turma" aria-label="Buscar anotações" />{search && <button type="button" onClick={() => setSearch('')} aria-label="Limpar busca"><X size={17} /></button>}</label><button className="primary-button add-button" onClick={() => openEditor()}><Plus size={19} /> Nova anotação</button></div>
           <label className="mobile-subjects">Matéria<select value={subject} onChange={(event) => setSubject(event.target.value)}><option value="Todas">Todas as matérias</option>{availableSubjects.map((item) => <option key={item} value={item}>{item}</option>)}</select><ChevronDown size={16} aria-hidden="true" /></label>
-          <div className="list-heading"><div><BookOpenText size={20} /><h2>{subject === 'Todas' ? 'Todas as páginas' : subject}</h2></div><span>{visibleNotes.length} {visibleNotes.length === 1 ? 'anotação' : 'anotações'}</span></div>
+          <div className="collection-tabs" aria-label="Visualização das anotações">
+            <button type="button" className={!favoritesOnly ? 'active' : ''} aria-pressed={!favoritesOnly} onClick={() => setFavoritesOnly(false)}><BookOpenText size={16} /> Todas as anotações</button>
+            <button type="button" className={favoritesOnly ? 'active' : ''} aria-pressed={favoritesOnly} onClick={() => setFavoritesOnly(true)}><Bookmark size={16} fill={favoritesOnly ? 'currentColor' : 'none'} /> Favoritos <span>{favoriteCount}</span></button>
+          </div>
+          <div className="list-heading"><div>{favoritesOnly ? <Bookmark size={20} /> : <BookOpenText size={20} />}<h2>{favoritesOnly ? 'Favoritos' : subject === 'Todas' ? 'Todas as páginas' : subject}</h2></div><span>{visibleNotes.length} {visibleNotes.length === 1 ? 'anotação' : 'anotações'}</span></div>
           {actionError && <div className="notice error" role="alert">{actionError}<button onClick={() => setActionError('')} aria-label="Fechar aviso"><X size={16} /></button></div>}
           {loadError && <div className="notice error" role="alert">{loadError}</div>}
-          {loading ? <div className="empty-state"><LoaderCircle className="spin" size={26} /><p>Procurando anotações…</p></div> : visibleNotes.length === 0 ? <div className="empty-state"><span className="empty-icon"><FilePenLine size={30} /></span><h3>{notes.length === 0 ? 'A primeira página espera por você.' : 'Nenhuma anotação por aqui.'}</h3><p>{notes.length === 0 ? 'Publique uma ideia, um resumo ou uma explicação para começar o caderno.' : 'Tente outra palavra ou matéria para encontrar mais páginas.'}</p><button className="secondary-button" onClick={() => notes.length === 0 ? openEditor() : (setSearch(''), setSubject('Todas'))}>{notes.length === 0 ? (user ? 'Escrever a primeira anotação' : 'Entrar para escrever') : 'Limpar filtros'}</button></div> : <div className="notes-grid">{visibleNotes.map((note) => <NoteCard key={note.id} note={note} onOpen={() => setSelectedNote(note)} />)}</div>}
+          {loading ? <div className="empty-state"><LoaderCircle className="spin" size={26} /><p>Procurando anotações…</p></div> : visibleNotes.length === 0 ? (
+            <div className="empty-state">
+              <span className="empty-icon">{favoritesOnly ? <Bookmark size={30} /> : <FilePenLine size={30} />}</span>
+              <h3>{favoritesOnly ? favoriteCount > 0 ? 'Nenhum favorito nesta busca.' : 'Nenhum favorito por aqui.' : notes.length === 0 ? 'A primeira página espera por você.' : 'Nenhuma anotação por aqui.'}</h3>
+              <p>{favoritesOnly ? favoriteCount > 0 ? 'Tente outra palavra ou matéria para encontrar suas páginas favoritas.' : 'Marque uma anotação para encontrá-la facilmente depois. Seus favoritos ficam salvos neste navegador.' : notes.length === 0 ? 'Publique uma ideia, um resumo ou uma explicação para começar o caderno.' : 'Tente outra palavra ou matéria para encontrar mais páginas.'}</p>
+              <button className="secondary-button" onClick={handleEmptyAction}>{favoritesOnly ? favoriteCount > 0 ? 'Limpar filtros' : 'Ver todas as anotações' : notes.length === 0 ? user ? 'Escrever a primeira anotação' : 'Entrar para escrever' : 'Limpar filtros'}</button>
+            </div>
+          ) : <div className="notes-grid">{visibleNotes.map((note) => <NoteCard key={note.id} note={note} onOpen={() => setSelectedNote(note)} isFavorite={favoriteIds.includes(note.id)} onToggleFavorite={() => toggleFavorite(note.id)} />)}</div>}
           <footer><span>Caderno Infinito · protótipo da Tech-2D</span><span>Feito para compartilhar o que aprendemos.</span></footer>
         </main>
       </div>
-      {selectedNote && <NoteDetail note={selectedNote} canEdit={selectedNote.authorUid === user?.uid} onClose={() => setSelectedNote(null)} onEdit={() => openEditor(selectedNote)} onDelete={() => removeNote(selectedNote)} />}
+      {selectedNote && <NoteDetail note={selectedNote} canEdit={selectedNote.authorUid === user?.uid} isFavorite={favoriteIds.includes(selectedNote.id)} onToggleFavorite={() => toggleFavorite(selectedNote.id)} onClose={() => setSelectedNote(null)} onEdit={() => openEditor(selectedNote)} onDelete={() => removeNote(selectedNote)} />}
       {editorOpen && user && <NoteEditor note={editorNote} onClose={() => setEditorOpen(false)} onSave={saveNote} />}
       {authOpen && !user && <AuthDialog onClose={() => { pendingNewNote.current = false; setAuthOpen(false) }} />}
     </div>

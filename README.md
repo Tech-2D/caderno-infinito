@@ -2,6 +2,8 @@
 
 Protótipo inicial de um caderno coletivo da Tech-2D. Qualquer pessoa pode ler as anotações, buscar por assunto e filtrar por matéria sem login. Para publicar é preciso entrar com uma conta; apenas o autor pode editar ou apagar suas páginas. As atualizações aparecem em tempo real para quem estiver com o site aberto.
 
+O botão de marcador em cada página permite adicioná-la aos favoritos. O filtro “Favoritos” mostra só as páginas marcadas; a lista fica salva neste navegador, sem exigir login, e não é sincronizada entre dispositivos.
+
 ## Rodar localmente
 
 ```sh
