@@ -11,6 +11,7 @@ import {
 import { FirebaseError } from 'firebase/app'
 import { addDoc, collection, deleteDoc, doc, onSnapshot, serverTimestamp, updateDoc } from 'firebase/firestore'
 import { auth, db } from './firebase'
+import { MarkdownContent, MarkdownExcerpt } from './MarkdownContent'
 import { filterNotes, matchesSubjectName, noteDate, SUBJECTS, type Note, type Subject, type SubjectFilter } from './notes'
 
 type NoteDraft = Pick<Note, 'title' | 'content' | 'subject' | 'className'>
@@ -108,7 +109,7 @@ function NoteCard({ note, onOpen }: { note: Note; onOpen: () => void }) {
     <button type="button" className="note-card" onClick={onOpen} aria-label={`Ler anotação: ${note.title}`}>
       <span className="note-card-top"><span className="subject-pill">{note.subject}</span><ArrowUpRight size={18} /></span>
       <strong>{note.title}</strong>
-      <span className="note-excerpt">{note.content}</span>
+      <MarkdownExcerpt content={note.content} />
       <span className="note-card-bottom"><span>{note.className || 'Sem turma'} · {note.authorEmail}</span><time>{noteDate(note.updatedAt)}</time></span>
     </button>
   )
@@ -130,7 +131,7 @@ function NoteDetail({ note, canEdit, onClose, onEdit, onDelete }: {
         <span className="subject-pill">{note.subject}</span>
         <h2 id="detail-title">{note.title}</h2>
         <div className="detail-meta">{note.className || 'Sem turma'} <span>·</span> {note.authorEmail} <span>·</span> {noteDate(note.updatedAt)}</div>
-        <div className="detail-content">{note.content}</div>
+        <div className="detail-content"><MarkdownContent content={note.content} /></div>
         <div className="detail-actions">
           {canEdit && <><button type="button" className="secondary-button" onClick={onEdit}><FilePenLine size={17} /> Editar</button><button type="button" className="danger-button" onClick={onDelete}><Trash2 size={17} /> Apagar</button></>}
           <button type="button" className="text-button" onClick={onClose}>Voltar ao caderno</button>
@@ -147,6 +148,7 @@ function NoteEditor({ note, onClose, onSave }: { note: Note | null; onClose: () 
   const [className, setClassName] = useState(note?.className ?? '')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [showPreview, setShowPreview] = useState(false)
   const editorSubjects = note && !SUBJECTS.some((item) => item === note.subject) ? [note.subject, ...SUBJECTS] : SUBJECTS
 
   useEffect(() => {
@@ -185,7 +187,11 @@ function NoteEditor({ note, onClose, onSave }: { note: Note | null; onClose: () 
             <label>Turma <span>(opcional)</span><input value={className} onChange={(event) => setClassName(event.target.value)} placeholder="Ex.: 2º D" maxLength={32} /></label>
           </div>
           <label>Título<input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Ex.: Função do 2º grau" maxLength={120} required autoFocus /></label>
-          <label>Anotação<textarea value={content} onChange={(event) => setContent(event.target.value)} placeholder="Explique o assunto do seu jeito, com exemplos, dicas e dúvidas..." maxLength={5000} rows={10} required /></label>
+          <div className="editor-body-field">
+            <div className="editor-body-header"><label htmlFor="note-content">Anotação</label><div className="editor-view-switch" aria-label="Modo de edição"><button type="button" aria-pressed={!showPreview} onClick={() => setShowPreview(false)}>Escrever</button><button type="button" aria-pressed={showPreview} onClick={() => setShowPreview(true)}>Prévia</button></div></div>
+            {showPreview ? <div className="editor-preview" role="region" aria-label="Prévia da anotação">{content.trim() ? <MarkdownContent content={content} /> : <p className="preview-empty">Escreva algo para ver a prévia.</p>}</div> : <textarea id="note-content" value={content} onChange={(event) => setContent(event.target.value)} placeholder="Escreva sua anotação em Markdown..." maxLength={5000} rows={10} required />}
+            <p className="markdown-help">Use <code>**negrito**</code>, <code># título</code>, <code>- lista</code> e <code>[link](URL)</code>.</p>
+          </div>
           <span className="editor-count">{content.length} / 5000 caracteres</span>
           {error && <p className="form-error" role="alert">{error}</p>}
           <div className="editor-actions"><button type="button" className="text-button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={busy}>{busy ? <LoaderCircle className="spin" size={18} /> : <><Check size={18} /> {note ? 'Salvar alterações' : 'Publicar anotação'}</>}</button></div>
