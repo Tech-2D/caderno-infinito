@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import {
   ArrowRight, ArrowUpRight, BookOpenText, Check, ChevronDown, CircleHelp,
   FilePenLine, Infinity as InfinityIcon, LoaderCircle, LogOut, Plus,
@@ -35,13 +35,19 @@ function Brand() {
   )
 }
 
-function AuthScreen() {
+function AuthDialog({ onClose }: { onClose: () => void }) {
   const [mode, setMode] = useState<'login' | 'register'>('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
+
+  useEffect(() => {
+    const close = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose() }
+    window.addEventListener('keydown', close)
+    return () => window.removeEventListener('keydown', close)
+  }, [onClose])
 
   async function submit(event: FormEvent) {
     event.preventDefault()
@@ -77,13 +83,12 @@ function AuthScreen() {
   }
 
   return (
-    <div className="auth-page">
-      <header className="auth-header"><Brand /></header>
-      <main className="auth-layout">
-        <section className="auth-card" aria-labelledby="auth-title">
+    <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+        <section className="auth-card auth-dialog" role="dialog" aria-modal="true" aria-labelledby="auth-title">
+          <div className="modal-top auth-dialog-top"><span className="eyebrow">ACESSO PARA PUBLICAR</span><button type="button" className="icon-button" onClick={onClose} aria-label="Fechar"><X size={20} /></button></div>
           <span className="auth-card-icon"><BookOpenText size={24} /></span>
           <h2 id="auth-title">{mode === 'login' ? 'Entrar no caderno' : 'Criar conta'}</h2>
-          <p>{mode === 'login' ? 'Acesse suas anotações compartilhadas.' : 'Use seu e-mail para começar a compartilhar anotações.'}</p>
+          <p>{mode === 'login' ? 'Entre para publicar suas anotações.' : 'Crie uma conta para compartilhar suas anotações.'}</p>
           <form onSubmit={submit}>
             <label htmlFor="email">E-mail</label>
             <input id="email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" required autoFocus />
@@ -97,9 +102,8 @@ function AuthScreen() {
             <button type="button" onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setError(''); setNotice('') }}>{mode === 'login' ? 'Ainda não tenho conta' : 'Já tenho conta'}</button>
             {mode === 'login' && <button type="button" onClick={recoverPassword} disabled={busy}>Esqueci a senha</button>}
           </div>
-          <div className="auth-foot"><CircleHelp size={16} /><span>Todos com conta podem ler e publicar. Cada pessoa edita apenas as próprias notas.</span></div>
+          <div className="auth-foot"><CircleHelp size={16} /><span>A leitura é livre. Para publicar, entre com sua conta; só o autor pode editar.</span></div>
         </section>
-      </main>
     </div>
   )
 }
@@ -214,20 +218,32 @@ function App() {
   const [selectedNote, setSelectedNote] = useState<Note | null>(null)
   const [editorOpen, setEditorOpen] = useState(false)
   const [editorNote, setEditorNote] = useState<Note | null>(null)
+  const [authOpen, setAuthOpen] = useState(false)
+  const pendingNewNote = useRef(false)
 
-  useEffect(() => onAuthStateChanged(auth, (account) => { setUser(account); setAuthReady(true) }), [])
+  useEffect(() => onAuthStateChanged(auth, (account) => {
+    setUser(account)
+    setAuthReady(true)
+    if (account) {
+      setAuthOpen(false)
+      if (pendingNewNote.current) {
+        pendingNewNote.current = false
+        setEditorNote(null)
+        setEditorOpen(true)
+      }
+    }
+  }), [])
 
   useEffect(() => {
-    if (!user) return
     return onSnapshot(collection(db, 'notebookNotes'), (snapshot) => {
       setNotes(snapshot.docs.map((item) => ({ id: item.id, ...item.data() }) as Note))
       setLoading(false)
       setLoadError('')
     }, () => {
       setLoading(false)
-      setLoadError('Não foi possível carregar as anotações. Confira a conexão ou tente entrar novamente.')
+      setLoadError('Não foi possível carregar as anotações. Confira a conexão e tente novamente.')
     })
-  }, [user])
+  }, [])
 
   const visibleNotes = useMemo(() => filterNotes(notes, subject, search), [notes, subject, search])
   const availableSubjects = useMemo(() => [...new Set<string>([...SUBJECTS, ...notes.map((note) => note.subject)])], [notes])
@@ -240,6 +256,11 @@ function App() {
   const myNotes = notes.filter((note) => note.authorUid === user?.uid).length
 
   function openEditor(note: Note | null = null) {
+    if (!user) {
+      pendingNewNote.current = true
+      setAuthOpen(true)
+      return
+    }
     setEditorNote(note)
     setSelectedNote(null)
     setEditorOpen(true)
@@ -259,6 +280,7 @@ function App() {
   }
 
   async function removeNote(note: Note) {
+    if (!user || note.authorUid !== user.uid) return
     if (!window.confirm(`Apagar “${note.title}” do caderno? Essa ação não pode ser desfeita.`)) return
     setActionError('')
     try {
@@ -270,11 +292,10 @@ function App() {
   }
 
   if (!authReady) return <div className="boot-screen"><LoaderCircle className="spin" size={25} /><span>Abrindo o caderno…</span></div>
-  if (!user) return <AuthScreen />
 
   return (
     <div className="app-shell">
-      <header className="topbar"><Brand /><div className="topbar-actions"><span className="account-email" title={user.email ?? ''}>{user.email}</span><button type="button" className="signout-button" onClick={() => signOut(auth)} aria-label="Sair da conta" title="Sair"><LogOut size={18} /></button></div></header>
+      <header className="topbar"><Brand /><div className="topbar-actions">{user ? <><span className="account-email" title={user.email ?? ''}>{user.email}</span><button type="button" className="signout-button" onClick={() => signOut(auth)} aria-label="Sair da conta" title="Sair"><LogOut size={18} /></button></> : <button type="button" className="signin-button" onClick={() => setAuthOpen(true)}>Entrar</button>}</div></header>
       <div className="workspace">
         <aside className="sidebar">
           <div className="sidebar-heading"><span>SEU ESPAÇO</span><strong>Explore o caderno</strong></div>
@@ -287,21 +308,22 @@ function App() {
             ))}
             {subjectQuery && matchingSubjects.length === 0 && <p className="subject-no-match">Nenhuma matéria encontrada.</p>}
           </nav>
-          <div className="sidebar-bottom"><div className="sidebar-stat"><strong>{myNotes.toString().padStart(2, '0')}</strong><span>anotações<br />escritas por você</span></div><p>Uma página pode abrir muitas ideias.</p><div className="other-apps"><span>OUTROS ESPAÇOS</span><a href="https://tech-2d.github.io/Agenda/" target="_blank" rel="noopener noreferrer">Agenda <ArrowUpRight size={15} /></a><a href="https://tech-2d.github.io/professores/" target="_blank" rel="noopener noreferrer">Cadê o professor? <ArrowUpRight size={15} /></a></div></div>
+          <div className="sidebar-bottom">{user ? <div className="sidebar-stat"><strong>{myNotes.toString().padStart(2, '0')}</strong><span>anotações<br />escritas por você</span></div> : <p className="sidebar-public-note">Leia à vontade. Entre para publicar uma anotação.</p>}<div className="other-apps"><span>OUTROS ESPAÇOS</span><a href="https://tech-2d.github.io/Agenda/" target="_blank" rel="noopener noreferrer">Agenda <ArrowUpRight size={15} /></a><a href="https://tech-2d.github.io/professores/" target="_blank" rel="noopener noreferrer">Cadê o professor? <ArrowUpRight size={15} /></a></div></div>
         </aside>
         <main className="main-content">
-          <div className="page-intro"><h1>Anotações</h1><p>Encontre ou compartilhe uma anotação.</p></div>
+          <div className="page-intro"><h1>Anotações</h1><p>{user ? 'Encontre ou compartilhe uma anotação.' : 'Leia livremente. Entre para compartilhar as suas anotações.'}</p></div>
           <div className="toolbar"><label className="search-box"><Search size={19} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar assunto, palavra ou turma" aria-label="Buscar anotações" />{search && <button type="button" onClick={() => setSearch('')} aria-label="Limpar busca"><X size={17} /></button>}</label><button className="primary-button add-button" onClick={() => openEditor()}><Plus size={19} /> Nova anotação</button></div>
           <label className="mobile-subjects">Matéria<select value={subject} onChange={(event) => setSubject(event.target.value)}><option value="Todas">Todas as matérias</option>{availableSubjects.map((item) => <option key={item} value={item}>{item}</option>)}</select><ChevronDown size={16} aria-hidden="true" /></label>
           <div className="list-heading"><div><BookOpenText size={20} /><h2>{subject === 'Todas' ? 'Todas as páginas' : subject}</h2></div><span>{visibleNotes.length} {visibleNotes.length === 1 ? 'anotação' : 'anotações'}</span></div>
           {actionError && <div className="notice error" role="alert">{actionError}<button onClick={() => setActionError('')} aria-label="Fechar aviso"><X size={16} /></button></div>}
           {loadError && <div className="notice error" role="alert">{loadError}</div>}
-          {loading ? <div className="empty-state"><LoaderCircle className="spin" size={26} /><p>Procurando anotações…</p></div> : visibleNotes.length === 0 ? <div className="empty-state"><span className="empty-icon"><FilePenLine size={30} /></span><h3>{notes.length === 0 ? 'A primeira página espera por você.' : 'Nenhuma anotação por aqui.'}</h3><p>{notes.length === 0 ? 'Publique uma ideia, um resumo ou uma explicação para começar o caderno.' : 'Tente outra palavra ou matéria para encontrar mais páginas.'}</p><button className="secondary-button" onClick={() => notes.length === 0 ? openEditor() : (setSearch(''), setSubject('Todas'))}>{notes.length === 0 ? 'Escrever a primeira anotação' : 'Limpar filtros'}</button></div> : <div className="notes-grid">{visibleNotes.map((note) => <NoteCard key={note.id} note={note} onOpen={() => setSelectedNote(note)} />)}</div>}
+          {loading ? <div className="empty-state"><LoaderCircle className="spin" size={26} /><p>Procurando anotações…</p></div> : visibleNotes.length === 0 ? <div className="empty-state"><span className="empty-icon"><FilePenLine size={30} /></span><h3>{notes.length === 0 ? 'A primeira página espera por você.' : 'Nenhuma anotação por aqui.'}</h3><p>{notes.length === 0 ? 'Publique uma ideia, um resumo ou uma explicação para começar o caderno.' : 'Tente outra palavra ou matéria para encontrar mais páginas.'}</p><button className="secondary-button" onClick={() => notes.length === 0 ? openEditor() : (setSearch(''), setSubject('Todas'))}>{notes.length === 0 ? (user ? 'Escrever a primeira anotação' : 'Entrar para escrever') : 'Limpar filtros'}</button></div> : <div className="notes-grid">{visibleNotes.map((note) => <NoteCard key={note.id} note={note} onOpen={() => setSelectedNote(note)} />)}</div>}
           <footer><span>Caderno Infinito · protótipo da Tech-2D</span><span>Feito para compartilhar o que aprendemos.</span></footer>
         </main>
       </div>
-      {selectedNote && <NoteDetail note={selectedNote} canEdit={selectedNote.authorUid === user.uid} onClose={() => setSelectedNote(null)} onEdit={() => openEditor(selectedNote)} onDelete={() => removeNote(selectedNote)} />}
-      {editorOpen && <NoteEditor note={editorNote} onClose={() => setEditorOpen(false)} onSave={saveNote} />}
+      {selectedNote && <NoteDetail note={selectedNote} canEdit={selectedNote.authorUid === user?.uid} onClose={() => setSelectedNote(null)} onEdit={() => openEditor(selectedNote)} onDelete={() => removeNote(selectedNote)} />}
+      {editorOpen && user && <NoteEditor note={editorNote} onClose={() => setEditorOpen(false)} onSave={saveNote} />}
+      {authOpen && !user && <AuthDialog onClose={() => { pendingNewNote.current = false; setAuthOpen(false) }} />}
     </div>
   )
 }
