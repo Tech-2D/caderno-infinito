@@ -11,7 +11,7 @@ import {
 import { FirebaseError } from 'firebase/app'
 import { addDoc, collection, deleteDoc, doc, onSnapshot, serverTimestamp, updateDoc } from 'firebase/firestore'
 import { auth, db } from './firebase'
-import { filterNotes, noteDate, SUBJECTS, type Note, type Subject, type SubjectFilter } from './notes'
+import { filterNotes, matchesSubjectName, noteDate, SUBJECTS, type Note, type Subject, type SubjectFilter } from './notes'
 
 type NoteDraft = Pick<Note, 'title' | 'content' | 'subject' | 'className'>
 
@@ -147,6 +147,7 @@ function NoteEditor({ note, onClose, onSave }: { note: Note | null; onClose: () 
   const [className, setClassName] = useState(note?.className ?? '')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const editorSubjects = note && !SUBJECTS.some((item) => item === note.subject) ? [note.subject, ...SUBJECTS] : SUBJECTS
 
   useEffect(() => {
     const close = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose() }
@@ -180,7 +181,7 @@ function NoteEditor({ note, onClose, onSave }: { note: Note | null; onClose: () 
         <p>Uma explicação clara ajuda a próxima pessoa a entender de primeira.</p>
         <form onSubmit={submit}>
           <div className="editor-row">
-            <label>Matéria<select value={subject} onChange={(event) => setSubject(event.target.value as Subject)}>{SUBJECTS.map((item) => <option key={item}>{item}</option>)}</select><ChevronDown size={16} aria-hidden="true" /></label>
+            <label>Matéria<select value={subject} onChange={(event) => setSubject(event.target.value as Subject)}>{editorSubjects.map((item) => <option key={item}>{item}</option>)}</select><ChevronDown size={16} aria-hidden="true" /></label>
             <label>Turma <span>(opcional)</span><input value={className} onChange={(event) => setClassName(event.target.value)} placeholder="Ex.: 2º D" maxLength={32} /></label>
           </div>
           <label>Título<input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Ex.: Função do 2º grau" maxLength={120} required autoFocus /></label>
@@ -202,6 +203,7 @@ function App() {
   const [loadError, setLoadError] = useState('')
   const [actionError, setActionError] = useState('')
   const [subject, setSubject] = useState<SubjectFilter>('Todas')
+  const [subjectQuery, setSubjectQuery] = useState('')
   const [search, setSearch] = useState('')
   const [selectedNote, setSelectedNote] = useState<Note | null>(null)
   const [editorOpen, setEditorOpen] = useState(false)
@@ -222,6 +224,13 @@ function App() {
   }, [user])
 
   const visibleNotes = useMemo(() => filterNotes(notes, subject, search), [notes, subject, search])
+  const availableSubjects = useMemo(() => [...new Set<string>([...SUBJECTS, ...notes.map((note) => note.subject)])], [notes])
+  const matchingSubjects = useMemo(() => availableSubjects.filter((item) => matchesSubjectName(item, subjectQuery)), [availableSubjects, subjectQuery])
+  const subjectCounts = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const note of notes) counts.set(note.subject, (counts.get(note.subject) ?? 0) + 1)
+    return counts
+  }, [notes])
   const myNotes = notes.filter((note) => note.authorUid === user?.uid).length
 
   function openEditor(note: Note | null = null) {
@@ -263,19 +272,21 @@ function App() {
       <div className="workspace">
         <aside className="sidebar">
           <div className="sidebar-heading"><span>SEU ESPAÇO</span><strong>Explore o caderno</strong></div>
+          <label className="subject-search"><Search size={16} /><input type="search" value={subjectQuery} onChange={(event) => setSubjectQuery(event.target.value)} placeholder="Buscar matéria" aria-label="Buscar matéria" /></label>
           <nav aria-label="Filtrar por matéria" className="subject-list">
-            {(['Todas', ...SUBJECTS] as SubjectFilter[]).map((item) => (
+            {(['Todas', ...matchingSubjects] as SubjectFilter[]).map((item) => (
               <button key={item} type="button" className={subject === item ? 'selected' : ''} onClick={() => setSubject(item)} aria-current={subject === item ? 'page' : undefined}>
-                <span className="subject-dot" /><span>{item === 'Todas' ? 'Todas as notas' : item}</span><small>{item === 'Todas' ? notes.length : notes.filter((note) => note.subject === item).length}</small>
+                <span className="subject-dot" /><span>{item === 'Todas' ? 'Todas as notas' : item}</span><small>{item === 'Todas' ? notes.length : subjectCounts.get(item) ?? 0}</small>
               </button>
             ))}
+            {subjectQuery && matchingSubjects.length === 0 && <p className="subject-no-match">Nenhuma matéria encontrada.</p>}
           </nav>
           <div className="sidebar-bottom"><div className="sidebar-stat"><strong>{myNotes.toString().padStart(2, '0')}</strong><span>anotações<br />escritas por você</span></div><p>Uma página pode abrir muitas ideias.</p><div className="other-apps"><span>OUTROS ESPAÇOS</span><a href="https://tech-2d.github.io/Agenda/" target="_blank" rel="noopener noreferrer">Agenda <ArrowUpRight size={15} /></a><a href="https://tech-2d.github.io/professores/" target="_blank" rel="noopener noreferrer">Cadê o professor? <ArrowUpRight size={15} /></a></div></div>
         </aside>
         <main className="main-content">
           <div className="page-intro"><h1>Anotações</h1><p>Encontre ou compartilhe uma anotação.</p></div>
           <div className="toolbar"><label className="search-box"><Search size={19} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar assunto, palavra ou turma" aria-label="Buscar anotações" />{search && <button type="button" onClick={() => setSearch('')} aria-label="Limpar busca"><X size={17} /></button>}</label><button className="primary-button add-button" onClick={() => openEditor()}><Plus size={19} /> Nova anotação</button></div>
-          <div className="mobile-subjects" aria-label="Matérias">{(['Todas', ...SUBJECTS] as SubjectFilter[]).map((item) => <button key={item} type="button" className={subject === item ? 'selected' : ''} onClick={() => setSubject(item)}>{item}</button>)}</div>
+          <label className="mobile-subjects">Matéria<select value={subject} onChange={(event) => setSubject(event.target.value)}><option value="Todas">Todas as matérias</option>{availableSubjects.map((item) => <option key={item} value={item}>{item}</option>)}</select><ChevronDown size={16} aria-hidden="true" /></label>
           <div className="list-heading"><div><BookOpenText size={20} /><h2>{subject === 'Todas' ? 'Todas as páginas' : subject}</h2></div><span>{visibleNotes.length} {visibleNotes.length === 1 ? 'anotação' : 'anotações'}</span></div>
           {actionError && <div className="notice error" role="alert">{actionError}<button onClick={() => setActionError('')} aria-label="Fechar aviso"><X size={16} /></button></div>}
           {loadError && <div className="notice error" role="alert">{loadError}</div>}

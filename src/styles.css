@@ -267,9 +267,15 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .sidebar { border-right-color: var(--line); background: white; }
 .sidebar-heading span, .other-apps > span { color: #61718f; font-family: 'DM Mono', monospace; }
 .sidebar-heading strong { color: var(--ink); font-family: 'Manrope', Arial, sans-serif; font-size: 17px; }
+.subject-search { min-height: 39px; display: flex; align-items: center; gap: 8px; margin: 0 8px; padding: 0 10px; border: 1px solid var(--line); border-radius: 6px; color: var(--muted); background: white; }
+.subject-search:focus-within { border-color: var(--teal); }
+.subject-search input { width: 100%; min-width: 0; border: 0; outline: 0; color: #24344b; background: transparent; font-size: 11px; }
+.subject-list { max-height: min(53dvh, 520px); overflow-y: auto; padding-right: 3px; scrollbar-color: #c6d2ec transparent; scrollbar-width: thin; }
 .subject-list button { border-radius: 6px; color: #4b5873; }
 .subject-list button:hover { background: #f2f5fb; }
 .subject-list button.selected { background: #eaf0ff; color: var(--teal); }
+.subject-list button > span:nth-child(2) { overflow-wrap: anywhere; }
+.subject-no-match { margin: 6px 12px; color: var(--muted); font-size: 11px; line-height: 1.5; }
 .subject-dot { background: #b5c2d9; }
 .selected .subject-dot { background: var(--teal); }
 .sidebar-stat strong { color: var(--teal); font-family: 'DM Mono', monospace; font-size: 28px; }
@@ -321,8 +327,9 @@ footer { color: #74819a; }
   .workspace { display: block; }
   .sidebar { display: none; }
   .page-intro h1 { font-size: 31px; }
-  .mobile-subjects button { border-radius: 5px; }
-  .mobile-subjects button.selected { border-color: var(--teal); background: #eaf0ff; color: var(--teal); }
+  .mobile-subjects { position: relative; display: grid; gap: 7px; overflow: visible; margin: 0 0 23px; padding: 0; color: #4b5873; font-size: 11px; font-weight: 800; }
+  .mobile-subjects select { width: 100%; height: 44px; appearance: none; padding: 0 36px 0 12px; border: 1px solid var(--line); border-radius: 6px; background: white; color: #24344b; font-size: 12px; }
+  .mobile-subjects > svg { position: absolute; right: 12px; bottom: 14px; pointer-events: none; color: var(--muted); }
   .note-card { min-height: 205px; }
   .detail-sheet, .editor-sheet { border-radius: 0; padding: 25px 20px 35px; }
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { Timestamp } from 'firebase/firestore'
-import { filterNotes, type Note } from './notes'
+import { filterNotes, matchesSubjectName, SUBJECTS, type Note } from './notes'
 
 const base = { className: '2º D', authorUid: 'u1', authorEmail: 'aluno@exemplo.com', createdAt: null }
 const notes: Note[] = [
@@ -9,6 +9,18 @@ const notes: Note[] = [
 ]
 
 describe('busca do caderno', () => {
+  it('inclui as matérias dos horários sem nomes repetidos', () => {
+    expect(new Set(SUBJECTS).size).toBe(SUBJECTS.length)
+    expect(SUBJECTS).toContain('Matemática 14-Inteligência Artificial')
+    expect(SUBJECTS).toContain('Desenvolvimento de Aplicação Dinâmica')
+    expect(SUBJECTS).toContain('UX')
+  })
+
+  it('busca matéria mesmo sem acentos e com outra capitalização', () => {
+    expect(matchesSubjectName('Matemática 14-Inteligência Artificial', 'inteligencia')).toBe(true)
+    expect(matchesSubjectName('Língua Portuguesa', 'LINGUA')).toBe(true)
+  })
+
   it('encontra palavras ignorando acentos e ordena pelas atualizações', () => {
     expect(filterNotes(notes, 'Todas', '').map((note) => note.id)).toEqual(['b', 'a'])
     expect(filterNotes(notes, 'Todas', 'equacoes').map((note) => note.id)).toEqual(['a'])
