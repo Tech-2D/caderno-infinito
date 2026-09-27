@@ -77,7 +77,7 @@ function AuthDialog({ onClose }: { onClose: () => void }) {
     setError('')
     try {
       await requestPasswordReset(email.trim())
-      setNotice('Se esse e-mail tiver uma conta, enviaremos um link para redefinir a senha.')
+      setNotice('Se esse e-mail tiver uma conta, enviaremos um link para redefinir a senha. Confira também a pasta de spam ou lixo eletrônico.')
     } catch {
       setError('Não conseguimos enviar o link agora. Tente novamente.')
     } finally {
