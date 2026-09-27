@@ -31,6 +31,8 @@ jobs:
         run: npm ci
       - name: Verificar e gerar site
         run: npm run build
+        env:
+          VITE_PASSWORD_RESET_API_URL: ${{ secrets.VITE_PASSWORD_RESET_API_URL }}
       - name: Configurar Pages
         uses: actions/configure-pages@v5
       - name: Preparar arquivos

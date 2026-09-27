@@ -5,10 +5,11 @@ import {
   Search, Sparkles, Trash2, X,
 } from 'lucide-react'
 import {
-  createUserWithEmailAndPassword, onAuthStateChanged, sendPasswordResetEmail,
+  createUserWithEmailAndPassword, onAuthStateChanged,
   signInWithEmailAndPassword, signOut, type User,
 } from 'firebase/auth'
 import { FirebaseError } from 'firebase/app'
+import { requestPasswordReset } from './passwordReset'
 import { addDoc, collection, deleteDoc, doc, onSnapshot, serverTimestamp, updateDoc } from 'firebase/firestore'
 import { auth, db } from './firebase'
 import { FAVORITES_STORAGE_KEY, filterFavoriteNotes, parseFavoriteIds, toggleFavoriteId } from './favorites'
@@ -75,7 +76,7 @@ function AuthDialog({ onClose }: { onClose: () => void }) {
     setBusy(true)
     setError('')
     try {
-      await sendPasswordResetEmail(auth, email.trim())
+      await requestPasswordReset(email.trim())
       setNotice('Se esse e-mail tiver uma conta, enviaremos um link para redefinir a senha.')
     } catch {
       setError('Não conseguimos enviar o link agora. Tente novamente.')
