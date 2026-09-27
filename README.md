@@ -13,7 +13,7 @@ npm ci
 npm run dev
 ```
 
-O app usa o projeto Firebase `d-tech-56a76`, compartilhado com Agenda e Cadê o professor?. A configuração web no código é pública; **não coloque chaves de conta de serviço neste repositório**. O provedor **E-mail/senha** precisa estar habilitado no Firebase Authentication.
+O app usa o projeto Firebase `d-tech-8555e`, compartilhado com Agenda e Cadê o professor?. A configuração web no código é pública; **não coloque chaves de conta de serviço neste repositório**. O provedor **E-mail/senha** precisa estar habilitado no Firebase Authentication.
 
 ## Dados e permissão
 
